@@ -12,19 +12,15 @@ class music(commands.Cog):
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
         self.YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        print("I'm ready")
-
     @commands.command()
-    async def join(self, message):
-        if message.author.voice is None:
-            await message.send("You're not in a voice channnel")
-        voice_channel = message.author.voice.channel
-        if message.voice_client is None:
+    async def join(self, ctx):
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channnel")
+        voice_channel = ctx.author.voice.channel
+        if ctx.voice_client is None:
             await voice_channel.connect()
         else:
-            await message.voice.client.move_to(voice_channel)
+            await ctx.voice_client.move_to(voice_channel)
 
     def search_yt(self, query):
         with youtube_dl.YoutubeDL(self.YDL_OPTIONS) as ydl:
@@ -35,31 +31,39 @@ class music(commands.Cog):
         return {'url': info['formats'][0]['url'], 'title': info['title']}
 
     @commands.command(aliases=['p'])
-    async def play(self, message, *args):
+    async def play(self, ctx, *args):
         query = " ".join(args)
+        if query == "": await ctx.send('You need to send the second argument')
+        if ctx.author.voice is None: await ctx.send("You're not in a voice channel")
 
-        vc = message.voice_client
-        video = self.search_yt(query)['url']
-        source = await discord.FFmpegOpusAudio.from_probe(video, **self.FFMPEG_OPTIONS)
-        vc.play(source)
+        voice_channel = ctx.author.voice.channel
+
+        if query != '':
+            if ctx.voice_client is None:
+                await voice_channel.connect()
+            vc = ctx.voice_client
+            video = self.search_yt(query)['url']
+            source = await discord.FFmpegOpusAudio.from_probe(video, **self.FFMPEG_OPTIONS)
+            vc.play(source)
 
     @commands.command(aliases=[])
-    async def stop(self, message):
-        await message.voice_client.stop()
+    async def stop(self, ctx):
+        await ctx.voice_client.stop()
+        await ctx.send("Stopped")
 
     @commands.command()
-    async def leave(self, message):
-        await message.voice_client.disconnect()
+    async def leave(self, ctx):
+        await ctx.voice_client.disconnect()
 
     @commands.command()
-    async def pause(self, message):
-        await message.voice_client.pause()
-        await message.send("Paused")
+    async def pause(self, ctx):
+        await ctx.voice_client.pause()
+        await ctx.send("Paused")
 
     @commands.command()
-    async def resume(self, message):
-        await message.voice_client.resume()
-        await message.send("resume")
+    async def resume(self, ctx):
+        await ctx.voice_client.resume()
+        await ctx.send("resume")
 
 
 def setup(client):

@@ -14,4 +14,9 @@ client = commands.Bot(command_prefix=config('PREFIX'), intents=intents)
 for i in range(len(cogs)):
     cogs[i].setup(client)
 
+@client.event
+async def on_ready():
+    print("I'm ready!")
+
+
 client.run(config('TOKEN'))
