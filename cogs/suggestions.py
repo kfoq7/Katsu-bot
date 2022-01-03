@@ -16,7 +16,7 @@ class suggestions(commands.Cog):
         async def on_message(ctx):
                 await ctx.message.delete()
 
-        if msg != "":
+        if msg == "":
             author = ctx.author
 
             embedVar = discord.Embed(
@@ -27,7 +27,7 @@ class suggestions(commands.Cog):
             await channel.send(embed=embedVar)
         else:
             await on_message(ctx)
-            await ctx.send('You need to send an argument')
+            await ctx.send('You need to send an argument', delete_after=5)
 
 
 def setup(client):
