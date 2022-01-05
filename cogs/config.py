@@ -29,7 +29,8 @@ class config(commands.Cog):
                 color=minecraft['color']
             )
             embed.set_thumbnail(url=minecraft['thumbnail_url'])
-            embed.add_field(name=minecraft['name'], value=minecraft['value'])
+            embed.add_field(name=minecraft['force']['name'], value=minecraft['force']['value'], inline=False)
+            embed.add_field(name=minecraft['resource_pack']['name'], value=minecraft['resource_pack']['value'])
             await ctx.send(embed=embed)
 
 

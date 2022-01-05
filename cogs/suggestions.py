@@ -14,9 +14,9 @@ class suggestions(commands.Cog):
 
         @commands.Cog.listener()
         async def on_message(ctx):
-                await ctx.message.delete()
+            await ctx.message.delete()
 
-        if msg == "":
+        if msg != "":
             author = ctx.author
 
             embedVar = discord.Embed(

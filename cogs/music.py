@@ -1,3 +1,4 @@
+import asyncio
 import discord
 from discord.ext import commands
 
@@ -8,31 +9,42 @@ class Queue:
     """
     This class is created to mapping and a control of the song;
     """
+    server_queue = {}
 
     def __init__(self):
         pass
 
-    def server_queue(self, song, songs=[]):
-        songs.append(self.search_yt(song).copy())
-        queue_constructor = {
-            'voice_channel': self.voice_channel,
-            'text_channel': self.text_channel,
-            'connection': self.connection,
-            'songs': songs
-        }
-        return queue_constructor
+    def _server_queue(self, song, songs=[]):
+        queue = self.server_queue.get(self.guild_id)
+        if not queue:
+            songs.append(self.search_yt(song).copy())
+            self.server_queue[self.guild_id] = {
+                'voice_channel': self.voice_channel,
+                'text_channel': self.text_channel,
+                'connection': self.connection,
+                'songs': songs
+            }
+            return self.server_queue, None
+        else:
+            song = self.search_yt(song).copy()
+            queue['songs'].append(song)
+            return self.server_queue, ':thumbsup: **%s** added to queue!' % song['title']
 
     def get_queue(self):
-        queue = self.server_queue()
+        queue = self.server_queue.get(self.guild_id)
+        if queue is not None:
+            return queue
+        return None
 
-        if queue is None:
-            msg = 'There are no songs in queue'
-            return msg
-        return queue
+    def get_next_song(self):
+        _queue = self.get_queue()
+        # del _queue['songs'][0]
+        return _queue
 
-    def song_player(self, query):
-        song_queue = self.server_queue(query)
-        return song_queue, True
+    def song_player(self, ctx, query):
+        server_queue, message = self._server_queue(query)
+        song_queue = server_queue.get(ctx.guild.id)
+        return song_queue, message
 
     def search_yt(self, query):
         with youtube_dl.YoutubeDL(self.YDL_OPTIONS) as ydl:
@@ -51,6 +63,9 @@ class music(Queue, commands.Cog):
 
     def __init__(self, client):
         self.client = client
+
+        self.guild_id = None
+
         self.voice_channel = None
         self.text_channel = None
         self.connection = None
@@ -79,23 +94,50 @@ class music(Queue, commands.Cog):
             if query == "":
                 await ctx.send('You need to send the second argument!')
             else:
+                self.guild_id = ctx.guild.id
                 self.voice_channel = ctx.author.voice.channel
                 self.text_channel = ctx.channel
+
+                song, message = self.song_player(ctx, query)
+                song_url = song['songs'][0]['url']
+                song_title = song['songs'][0]['title']
+
+                async def play_next(ctx):
+                    # When there are songs in queue we need to repeat the process to play
+                    # the next song, so this function gotten next song and play it.
+                    songs = len(self.get_queue()['songs'])
+                    if songs == 0:
+                        self.server_queue.pop(ctx.guild.id)
+                    if songs > 0:
+                        song = self.get_next_song()['songs']
+                        source = await discord.FFmpegOpusAudio.from_probe(song[0]['url'], **self.FFMPEG_OPTIONS)
+                        ctx.voice_client.play(
+                            source, after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), self.client.loop))
+                        await ctx.send(':notes: Now playing ~ **%s**' % song[0]['title'])
+                        song.pop(0) # delete the last song played.
 
                 try:
                     if ctx.voice_client is None:
                         self.connection = await self.voice_channel.connect()
-                    song, found = self.song_player(query)
-                    if found:
-                        song_title = song['songs'][0]['title']
-                        song_url = song['songs'][0]['url']
+                        await ctx.send(f'**Joined `{self.voice_channel.name}` and requested into <#{self.text_channel.id}>**')
+
+                    if message is not None:
+                        await ctx.send(message, delete_after=5)
+                    else:
                         await ctx.send(':mag_right: Searching on `YouTube`')
-                        source = await discord.FFmpegOpusAudio.from_probe(
-                            song_url, **self.FFMPEG_OPTIONS)
-                        ctx.voice_client.play(source)
-                        await ctx.send(f':notes: Now playing **{song_title}**')
+
+                    source = await discord.FFmpegOpusAudio.from_probe(song_url, **self.FFMPEG_OPTIONS)
                 except:
-                    await ctx.send('There was a error connecting')
+                    await ctx.send('There was an error connecting')
+                else:
+                    try:
+                        ctx.voice_client.play(
+                            source, after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), self.client.loop))
+                        song['songs'].pop(0) # delete the last song played.
+                    except:
+                        pass # ignored error: `discord.errors.ClientException: Already playing audio.`
+                    else:
+                        await ctx.send(f':notes: Now playing ~ **{song_title}**')
 
     @commands.command(aliases=[])
     async def stop(self, ctx):
