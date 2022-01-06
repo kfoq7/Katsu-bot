@@ -7,7 +7,7 @@ import youtube_dl
 
 class Queue:
     """
-    This class is created to mapping and a control of the song;
+    This class is created to mapping and handle of the songs.
     """
     server_queue = {}
 
@@ -38,7 +38,6 @@ class Queue:
 
     def get_next_song(self):
         _queue = self.get_queue()
-        # del _queue['songs'][0]
         return _queue
 
     def song_player(self, ctx, query):
@@ -84,6 +83,24 @@ class music(Queue, commands.Cog):
         else:
             await ctx.voice_client.move_to(voice_channel)
 
+    async def play_next(self, ctx):
+        # When there are songs in queue we need to repeat the process to play
+        # the next song, so this function gotten next song and play it.
+        songs = len(self.get_queue()['songs'])
+        if songs == 0:
+            self.server_queue.pop(ctx.guild.id)
+        if songs > 0:
+            song = self.get_next_song()['songs']
+            source = await discord.FFmpegOpusAudio.from_probe(song[0]['url'], **self.FFMPEG_OPTIONS)
+            try:
+                ctx.voice_client.play(
+                    source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
+                song.pop(0) # delete the last song played.
+            except:
+                pass # ignored error: `discord.errors.ClientException: Already playing audio.`
+            else:
+                await ctx.send(':notes: Now playing ~ **%s**' % song[0]['title'])
+
     @commands.command(aliases=['p'])
     async def play(self, ctx, *args):
         query = " ".join(args)
@@ -99,22 +116,7 @@ class music(Queue, commands.Cog):
                 self.text_channel = ctx.channel
 
                 song, message = self.song_player(ctx, query)
-                song_url = song['songs'][0]['url']
                 song_title = song['songs'][0]['title']
-
-                async def play_next(ctx):
-                    # When there are songs in queue we need to repeat the process to play
-                    # the next song, so this function gotten next song and play it.
-                    songs = len(self.get_queue()['songs'])
-                    if songs == 0:
-                        self.server_queue.pop(ctx.guild.id)
-                    if songs > 0:
-                        song = self.get_next_song()['songs']
-                        source = await discord.FFmpegOpusAudio.from_probe(song[0]['url'], **self.FFMPEG_OPTIONS)
-                        ctx.voice_client.play(
-                            source, after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), self.client.loop))
-                        await ctx.send(':notes: Now playing ~ **%s**' % song[0]['title'])
-                        song.pop(0) # delete the last song played.
 
                 try:
                     if ctx.voice_client is None:
@@ -126,38 +128,95 @@ class music(Queue, commands.Cog):
                     else:
                         await ctx.send(':mag_right: Searching on `YouTube`')
 
-                    source = await discord.FFmpegOpusAudio.from_probe(song_url, **self.FFMPEG_OPTIONS)
+                    source = await discord.FFmpegOpusAudio.from_probe(song['songs'][0]['url'], **self.FFMPEG_OPTIONS)
                 except:
                     await ctx.send('There was an error connecting')
                 else:
                     try:
                         ctx.voice_client.play(
-                            source, after=lambda e: asyncio.run_coroutine_threadsafe(play_next(ctx), self.client.loop))
+                            source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
                         song['songs'].pop(0) # delete the last song played.
                     except:
                         pass # ignored error: `discord.errors.ClientException: Already playing audio.`
                     else:
                         await ctx.send(f':notes: Now playing ~ **{song_title}**')
 
+    @commands.command(aliases=['s'])
+    async def skip(self, ctx, *, voted_skip=[]):
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channel!")
+        else:
+            if self.get_queue() is None:
+                await ctx.send('There are no songs in queue :thinking:')
+            else:
+                channel = self.client.get_channel(self.voice_channel.id)
+
+                # before counts members in voice channel, it is needs to check
+                # if one of the all members is a bot or not
+                length_members = [
+                    member.id for member in channel.members if member.bot is not True
+                ]
+                voted_skip.append(ctx.author.id)
+
+                require = len(length_members) * 0.8
+
+                if len(voted_skip) == round(require):
+                    ctx.voice_client.stop()
+                    await ctx.send('Song Skipped :thumbsup:')
+                    song = self.server_queue.get(ctx.guild.id)
+                    await self.play_next(ctx) and voted_skip.clear() if song is not None else voted_skip.clear()
+                else:
+                    await ctx.send('Skipping? (%s/%s peolple)' % (len(voted_skip), len(length_members)))
+
+    @commands.command(aliases=['fs'])
+    async def forceskip(self, ctx):
+        pass
+
     @commands.command(aliases=[])
     async def stop(self, ctx):
-        await ctx.voice_client.stop()
-        await ctx.send('Stopped')
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channel!")
+        else:
+            if self.get_queue() is None:
+                await ctx.send('There is no playing song now :thinking:')
+            else:
+                await ctx.voice_client.stop()
+                await ctx.send('Stopped')
 
     @commands.command()
     async def leave(self, ctx):
-        await ctx.voice_client.disconnect()
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channel!")
+        else:
+            await ctx.voice_client.disconnect()
+            await ctx.send('Leaving channel, see you :v:')
 
     @commands.command()
     async def pause(self, ctx):
-        await ctx.voice_client.pause()
-        await ctx.send('Paused')
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channel!")
+        else:
+            if self.get_queue() is None:
+                await ctx.send('There is no playing song now :thinking:')
+            else:
+                await ctx.voice_client.pause()
+                await ctx.send('Paused')
 
     @commands.command()
     async def resume(self, ctx):
-        await ctx.voice_client.resume()
-        await ctx.send('resume')
+        if ctx.author.voice is None:
+            await ctx.send("You're not in a voice channel!")
+        else:
+            if self.get_queue() is None:
+                await ctx.send('There is no playing song now :thinking:')
+            else:
+                await ctx.voice_client.resume()
+                await ctx.send('resume')
 
+    @commands.command()
+    async def queue(self, ctx):
+        # coming soong
+        pass
 
 def setup(client):
     client.add_cog(music(client))

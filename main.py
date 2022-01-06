@@ -8,7 +8,8 @@ cogs = [music, suggestions, config]
 from decouple import config
 
 intents = discord.Intents().all()
-client = commands.Bot(command_prefix=config('PREFIX'), intents=intents)
+activity = discord.Activity(type=discord.ActivityType.watching, name='que pend*jada haces')
+client = commands.Bot(command_prefix=config('PREFIX'), activity=activity, intents=intents)
 
 for i in range(len(cogs)):
     cogs[i].setup(client)
