@@ -4,12 +4,13 @@ from discord.ext import commands
 from media.gif import *
 
 
-class config(commands.Cog):
+class Admin(commands.Cog):
 
     def __init__(self, client):
         self.client = client
 
     @commands.command()
+    @commands.has_role('ADMIN')
     async def embed(self, ctx, *key):
         query = ' '.join(key)
 
@@ -35,4 +36,4 @@ class config(commands.Cog):
 
 
 def setup(client):
-    client.add_cog(config(client))
+    client.add_cog(Admin(client))
