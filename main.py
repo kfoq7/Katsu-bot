@@ -1,11 +1,11 @@
 import discord
 from discord.ext import commands
 
-from cogs import music, suggestions, admin
+from cogs import music, suggestions, admin, reactions
 
 from decouple import config
 
-cogs = [music, suggestions, admin]
+cogs = [music, suggestions, admin, reactions]
 
 intents = discord.Intents().all()
 activity = discord.Activity(type=discord.ActivityType.watching, name='que pend*jada haces')

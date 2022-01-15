@@ -1,11 +1,11 @@
 import asyncio
 import discord
-from discord import member
 from discord.ext import commands
 
 import youtube_dl
 
 from utils import *
+
 
 class Queue:
     """
@@ -53,10 +53,10 @@ class Queue:
         embed = discord.Embed(title=song[-1]['title'], color=000, url='https://www.youtube.com/')
         embed.set_author(name='Added to queue', icon_url=ctx.author.avatar_url)
         embed.set_thumbnail(url=song[-1]['thumbnail'])
-        embed.add_field(name='Request', value=ctx.author.nick)
+        embed.add_field(name='Requested by:', value='`%s`' %  song[-1]['author'])
         embed.add_field(name='Song Duration', value='`%s`' % format_seconds(song[-1]['duration']))
         embed.add_field(name='Position in queue', value='`%s.`' % str(song.index(song[-1]) + 1))
-        embed.set_footer(text='✅ | Use `?queue` to see the queue or use `?play` to add songs.')
+        embed.set_footer(text='✅ | Use `?queue` to see the queue.')
         return embed
 
     def search_yt(self, query, ctx):
@@ -92,6 +92,15 @@ class music(Queue, commands.Cog):
         self.FFMPEG_OPTIONS = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
         self.YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        voice_client = discord.utils.get(self.client.voice_clients, guild=member.guild)
+        if voice_client is not None:
+            if len(voice_client.channel.members) == 1:
+                self.server_queue[member.guild.id]['songs'].clear()
+                self.server_queue.pop(member.guild.id)
+                await voice_client.disconnect()
 
     @commands.command()
     async def join(self, ctx):
@@ -135,13 +144,13 @@ class music(Queue, commands.Cog):
                 self.voice_channel = ctx.author.voice.channel
                 self.text_channel = ctx.channel
 
-                server_queue, message = self.song_player(ctx, query)
-                song = server_queue['songs'][0]
-
                 try:
                     if ctx.voice_client is None:
                         self.connection = await self.voice_channel.connect()
                         await ctx.send(f'**Joined `{self.voice_channel.name}` and requested into <#{self.text_channel.id}>**')
+
+                    server_queue, message = self.song_player(ctx, query)
+                    song = server_queue['songs'][0]
 
                     if message is not None:
                         await ctx.send(embed=self.add_embed_queue(server_queue['songs'], ctx))
@@ -184,6 +193,8 @@ class music(Queue, commands.Cog):
                     self.voted_skip.clear()
                     self.voted_skip.append(ctx.author.id)
                     await ctx.send('Restarting vote, due to either of the members has left.', delete_after=5)
+                    await asyncio.sleep(5)
+
                 if len(self.voted_skip) == round(require):
                     ctx.voice_client.stop()
                     await ctx.send('**Skkiped** :thumbsup:')
@@ -239,6 +250,10 @@ class music(Queue, commands.Cog):
         if ctx.author.voice is None:
             await ctx.send("You're not in a voice channel!")
         else:
+            server_queue = self.server_queue.get(ctx.guild.id, None)
+            if server_queue is not None:
+                self.server_queue.pop(ctx.guild.id)
+                ctx.voice_client.stop()
             await ctx.voice_client.disconnect()
             await ctx.send('Leaving channel, see you :v:')
 
@@ -270,26 +285,27 @@ class music(Queue, commands.Cog):
         if server_queue is None:
             await ctx.send('There are no songs in queue :thinking:')
         else:
-            songs = server_queue['songs']
             embed_list_songs = discord.Embed(
                 color=000,
                 title='📄 | Queue List',
                 description='__Now Playing__:\n[**%s**](https://www.youtube.com/) | `%s Requested by: %s`\nㅤ' %
                 (self.now_playing['title'], format_seconds(self.now_playing['duration']), self.now_playing['author']),)
             embed_list_songs.set_thumbnail(url=self.now_playing['thumbnail'])
+
             cont = 0
-            if len(songs) == 0:
-                embed_list_songs.add_field(
-                    name='There are no songs in queue.', value='✅ | No songs? use command `?play` to add songs')
-            else:
-                for song in songs:
+            if len(server_queue['songs']) > 0:
+                for song in server_queue['songs']:
                     cont += 1
                     embed_list_songs.add_field(
                         name='%s' % song['title'],
                         value='`%s.` Duration %s | `Requested by: %s`' %
-                        (cont, format_seconds(song['duration']), ctx.author.name),
+                        (cont, format_seconds(song['duration']), song['author']),
                         inline=False)
                 embed_list_songs.set_footer(text='✅ | Use command `?play` to add songs.')
+            else:
+                embed_list_songs.add_field(
+                    name='There are no songs in queue.', value='✅ | No songs? use command `?play` to add songs')
+
             await ctx.send(embed=embed_list_songs)
 
 def setup(client):
