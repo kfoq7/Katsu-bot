@@ -27,3 +27,27 @@ minecraft = {
     # image
     'image': 'https://media.tenor.co/videos/bd7d811746b561653e60575e5e24998f/mp4',
 }
+
+eightBall = [
+        "As I see it, yes",
+        "Ask again later",
+        "Better not tell you now",
+        "Cannot predict now.",
+        "Concentrate and ask again.",
+        "Don't count on it.",
+        "It is certain.",
+        "It is decidedly so.",
+        "My reply is no.",
+        "Outlook not so good.",
+        "Outlook good.",
+        "Reply hazy, try again.",
+        "Signs point to yes.",
+        "Very doubtful.",
+        "Without a doubt.",
+        "You may rely on it.",
+        "I don't understand Minecraft enchantment table",
+        "You probably have a stroke",
+        "I feel embarassed, I will not answer",
+        "If you're Mlau, go away",
+        "TERI TERI, oh wait. What did you asked ?",
+]

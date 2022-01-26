@@ -10,3 +10,7 @@ def format_seconds(duration):
 def color_rgb(r, g, b):
     color = discord.Color.from_rgb(r, g, b)
     return color
+
+def is_number(arg):
+    elem = True if arg >= '0' and arg <= '9' else False
+    return elem
