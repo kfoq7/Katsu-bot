@@ -1,3 +1,3 @@
-### Python Discord Bot (Katsu)
+`### Python Discord Bot (Katsu)`
 
 This a personal bot to my server.
