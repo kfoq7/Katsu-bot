@@ -4,12 +4,13 @@ from discord.ext import commands
 from cogs import music, suggestions, admin, reactions, fun
 
 from tasks import Tasks
-from decouple import config
+from env import TOKEN, PREFIX
+# from decouple import config
 
 cogs = [music, suggestions, admin, reactions, fun]
 
 intents = discord.Intents().all()
-client = commands.Bot(command_prefix=config('PREFIX'), intents=intents)
+client = commands.Bot(command_prefix=PREFIX, intents=intents)
 tk = Tasks(client)
 
 for i in range(len(cogs)):
@@ -21,4 +22,4 @@ async def on_ready():
     tk.check_voice_channel.start()
     print("I'm ready!")
 
-client.run(config('TOKEN'))
+client.run(TOKEN)

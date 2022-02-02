@@ -9,4 +9,4 @@ venv/
 # local archive
 test.py
 levelsys.py
-.env
+env.py
