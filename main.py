@@ -2,24 +2,16 @@ import discord
 from discord.ext import commands
 
 from cogs import music, suggestions, admin, reactions, fun
-
-from tasks import Tasks
 from env import TOKEN, PREFIX
-# from decouple import config
+from handles import events
 
-cogs = [music, suggestions, admin, reactions, fun]
+activity_1 = discord.Activity(type=discord.ActivityType.watching, name='que pend*jada haces')
+cogs = [music, suggestions, admin, reactions, fun, events]
 
 intents = discord.Intents().all()
-client = commands.Bot(command_prefix=PREFIX, intents=intents)
-tk = Tasks(client)
+client = commands.Bot(command_prefix=PREFIX, activity=activity_1, intents=intents)
 
 for i in range(len(cogs)):
     cogs[i].setup(client)
-
-@client.event
-async def on_ready():
-    tk.change_status.start()
-    tk.check_voice_channel.start()
-    print("I'm ready!")
 
 client.run(TOKEN)

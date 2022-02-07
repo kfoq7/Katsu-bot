@@ -8,20 +8,13 @@ import youtube_dl
 from utils import *
 
 
-now_playing = None
+queue = Map()
 server_queue = {}
-url_id = None
 voted_skip = []
-
 
 class YoutubeDL(youtube_dl.YoutubeDL):
 
     YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
-
-    def extract_info(self, url, download=True, ie_key=None, extra_info=..., process=True, force_generic_extractor=False):
-        global url_id
-        url_id = url
-        return super().extract_info(url, download, ie_key, extra_info, process, force_generic_extractor)
 
     def validate_url_is_playlist(self, query):
         if '&' in query:
@@ -37,10 +30,10 @@ class YoutubeDL(youtube_dl.YoutubeDL):
                 info = ydl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
                 song = {
                     'url': info['formats'][0]['url'],
+                    'id': info['id'],
                     'title': info['title'],
                     'thumbnail': info['thumbnail'],
                     'duration': info['duration'],
-                    'yt_url': url_id,
                     'author': author.name
                 }
             except Exception:
@@ -52,46 +45,42 @@ class Queue(YoutubeDL):
     """
     This class is created to mapping and handle of the songs.
     """
-    global server_queue
 
-    def _server_queue(self, song, ctx, songs=[]):
-        queue = server_queue.get(self.guild_id)
-        if not queue:
-            songs.append(self.search_yt(song, ctx.author).copy())
-            server_queue[self.guild_id] = {
+    def _server_queue(self, song, ctx):
+        server_queue = self.get_server_queue(ctx.guild)
+        song = self.search_yt(song, ctx.author).copy()
+        if not server_queue:
+            queue_object = {
                 'voice_channel': self.voice_channel,
                 'text_channel': self.text_channel,
                 'connection': self.connection,
-                'songs': songs
+                'songs': []
             }
-            return server_queue, None
+            queue.set(ctx.guild.id, queue_object)
+            queue_object['songs'].append(song)
+            return self.get_server_queue(ctx.guild), None
         else:
-            song = self.search_yt(song, ctx.author).copy()
-            queue['songs'].append(song)
+            server_queue['songs'].append(song)
             return server_queue, str
 
-    def get_queue(self):
-        queue = server_queue.get(self.guild_id)
-        if queue is not None:
-            return queue
-        return None
+    def get_server_queue(self, guild=None):
+        server_queue = queue.get(guild.id)
+        return server_queue
 
     def get_next_song(self):
-        song = self.get_queue()['songs'][0]
-        return song
+        return self.get_queue()['songs'][0]
 
     def song_player(self, ctx, query):
         server_queue, message = self._server_queue(query, ctx)
-        song_queue = server_queue.get(ctx.guild.id)
-        return song_queue, message
+        return server_queue, message
 
     def add_embed_queue(self, song, ctx):
-        embed = discord.Embed(title=song[-1]['title'], color=000, url='https://www.youtube.com/watch?v=%s' % song[-1]['yt_url'])
+        embed = discord.Embed(title=song[-1]['title'], color=000, url='https://www.youtube.com/watch?v=%s' % song[-1]['id'])
         embed.set_author(name='Added to queue', icon_url=ctx.author.avatar_url)
         embed.set_thumbnail(url=song[-1]['thumbnail'])
         embed.add_field(name='Requested by:', value='`%s`' %  song[-1]['author'])
         embed.add_field(name='Song Duration', value='`%s`' % format_seconds(song[-1]['duration']))
-        embed.add_field(name='Position in queue', value='`%s.`' % str(song.index(song[-1]) + 1))
+        embed.add_field(name='Position in queue', value='`%s.`' % str(song.index(song[-1])))
         embed.set_footer(text='✅ | Use `?queue` to see the queue.')
         return embed
 
@@ -104,7 +93,7 @@ class music(Queue, commands.Cog):
     def __init__(self, client):
         self.client = client
 
-        self.guild_id = None
+        self.guild = None
         self.voice_channel = None
         self.text_channel = None
         self.connection = None
@@ -118,7 +107,7 @@ class music(Queue, commands.Cog):
             if ctx.author.voice is None:
                 return await ctx.send('You are not in a voice channel!')
             elif (' '.join(args) != '' or not '') and ctx.author.voice is not None:
-                if coro.__name__ not in ['play', 'join', 'leave'] and self.get_queue() is None:
+                if coro.__name__ not in ['play', 'join', 'leave'] and self.get_server_queue(ctx.guild) is None:
                     return await ctx.send('There are not songs in queue!')
                 return await coro(self, ctx, *args, **kwargs)
         return decorator
@@ -136,34 +125,29 @@ class music(Queue, commands.Cog):
     async def play_next(self, ctx):
         # When there are songs in queue it is need to repeat the process to play
         # the next song, so this function gotten next song and play it.
-        global now_playing
+        songs = self.get_server_queue(ctx.guild)['songs']
+        songs.pop(0) # delete the last song played.
 
-        songs = self.get_queue()['songs']
         if len(songs) == 0:
-            return server_queue.pop(ctx.guild.id)
+            queue.delete(ctx.guild.id)
         if len(songs) > 0:
-            song = self.get_next_song()
-            source = await discord.FFmpegOpusAudio.from_probe(song['url'], **self.FFMPEG_OPTIONS)
+            source = await discord.FFmpegOpusAudio.from_probe(songs[0]['url'], **self.FFMPEG_OPTIONS)
             try:
-                ctx.voice_client.play(
-                    source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
-                now_playing = song
-                songs.pop(0) # delete the last song played.
+                ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
             except:
                 pass # ignored error: `discord.errors.ClientException: Already playing audio.`
 
     @commands.command(aliases=['p'])
     @__handle_bot_queue_status
     async def play(self, ctx, *args):
-        global now_playing
         query = " ".join(args)
 
         if query == "":
             await ctx.send('You need to send the second argument!')
         else:
-            self.guild_id = ctx.guild.id
-            self.voice_channel = ctx.author.voice.channel
+            self.guild = ctx.guild
             self.text_channel = ctx.channel
+            self.voice_channel = ctx.author.voice.channel
 
             server_queue, message = self.song_player(ctx, query)
             song = server_queue['songs'][0]
@@ -177,22 +161,18 @@ class music(Queue, commands.Cog):
                 if message is not None:
                     await ctx.send(embed=self.add_embed_queue(server_queue['songs'], ctx))
                 else:
-                    now_playing = song
-                    await ctx.send(':mag_right: Searching on `YouTube`')
+                    await ctx.send(':mag_right: Searching on **YouTube**')
 
                 source = discord.FFmpegPCMAudio(song['url'], **self.FFMPEG_OPTIONS)
             except:
                 await ctx.send('There was an error connecting')
-                raise
             else:
                 try:
                     ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
-                    server_queue['songs'].pop(0) # delete the last song played.
                 except:
                     pass # ignored error: `discord.errors.ClientException: Already playing audio.`
                 else:
                     await ctx.send(f':notes: Now playing ~ **%s**' % song['title'])
-
 
     @commands.command(aliases=['s'])
     @__handle_bot_queue_status
@@ -217,7 +197,7 @@ class music(Queue, commands.Cog):
         if len(voted_skip) == round(require):
             ctx.voice_client.stop()
             await ctx.send('**Skkiped** :thumbsup:')
-            song = server_queue.get(ctx.guild.id)
+            song = self.get_server_queue(ctx.guild)
             if song is not None:
                 await self.play_next(ctx)
             voted_skip.clear()
@@ -238,12 +218,14 @@ class music(Queue, commands.Cog):
         await ctx.send('Missing permissions, sorry')
 
     @commands.command(aliases=['np'])
+    @__handle_bot_queue_status
     async def nowplaying(self, ctx):
+        now_playing = self.get_server_queue(ctx)['songs'][0]
         embed = discord.Embed(
             color=000,
             title='▶️ | Now playing',
             description='[**%s**](https://www.youtube.com/watch?v=%s) | Duration %s\n`Requested by: %s`\nㅤ' %
-            (now_playing['title'], now_playing['yt_url'], format_seconds(now_playing['duration']), now_playing['author']))
+            (now_playing['title'], now_playing['id'], format_seconds(now_playing['duration']), now_playing['author']))
         embed.set_thumbnail(url=now_playing['thumbnail'])
         embed.add_field(name='Add Songs.', value='✅ | Use command `?play`.')
         await ctx.send(embed=embed)
@@ -251,7 +233,7 @@ class music(Queue, commands.Cog):
     @commands.command(aliases=[])
     @__handle_bot_queue_status
     async def stop(self, ctx):
-        await ctx.voice_client.stop()
+        ctx.voice_client.stop()
         await ctx.send('Stopped')
 
     @commands.command()
@@ -263,36 +245,24 @@ class music(Queue, commands.Cog):
         if _server_queue is not None:
             server_queue.pop(ctx.guild.id)
             ctx.voice_client.stop()
-            now_playing.clear()
         await ctx.voice_client.disconnect()
         await ctx.send('Leaving channel, see you :v:')
 
     @commands.command()
     @__handle_bot_queue_status
-    async def pause(self, ctx):
-        await ctx.voice_client.pause()
-        await ctx.send('Paused')
-
-    @commands.command()
-    @__handle_bot_queue_status
-    async def resume(self, ctx):
-        await ctx.voice_client.resume()
-        await ctx.send('resume')
-
-    @commands.command()
-    @__handle_bot_queue_status
     async def queue(self, ctx):
-        server_queue = self.get_queue()
+        songs = self.get_server_queue(ctx.guild)['songs']
+        now_playing = songs[0]
         embed_list_songs = discord.Embed(
             color=000,
             title='📄 | Queue List',
             description='__Now Playing__:\n[**%s**](https://www.youtube.com/watch?v=%s) | `%s Requested by: %s`\nㅤ' %
-            (now_playing['title'], now_playing['yt_url'], format_seconds(now_playing['duration']), now_playing['author']),)
+            (now_playing['title'], now_playing['id'], format_seconds(now_playing['duration']), now_playing['author']),)
         embed_list_songs.set_thumbnail(url=now_playing['thumbnail'])
 
         cont = 0
-        if len(server_queue['songs']) > 0:
-            for song in server_queue['songs']:
+        if len(songs) > 0:
+            for song in songs[1:]:
                 cont += 1
                 embed_list_songs.add_field(
                     name='%s' % song['title'],
@@ -307,12 +277,12 @@ class music(Queue, commands.Cog):
         await ctx.send(embed=embed_list_songs)
 
 def check_queue():
-    queue = False if server_queue == {} else True
-    return queue
+    status = False if queue == {} else True
+    return status
 
 def clear_server_queue(voice_client):
-    server_queue[voice_client.guild.id]['songs'].clear()
-    server_queue.pop(voice_client.guild.id)
+    queue.get(voice_client.guild.id)['songs'].clear()
+    queue.delete(voice_client.guild.id)
     voted_skip.clear()
 
 def setup(client):
