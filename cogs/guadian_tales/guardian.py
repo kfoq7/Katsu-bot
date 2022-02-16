@@ -4,9 +4,10 @@ import functools
 from discord.ext import commands
 from pymongo import MongoClient
 
+from env import MONOGO_DB
 
-cluster = MongoClient(
-    'mongodb+srv://kfoq7:admin@cluster0.petxl.mongodb.net/myFirstDatabase?retryWrites=true&w=majority')
+
+cluster = MongoClient(MONOGO_DB)
 #  cluster.get_database('discord')
 records = cluster['discord']['guardian']
 
