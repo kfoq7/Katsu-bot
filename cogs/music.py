@@ -78,7 +78,7 @@ class Queue(YoutubeDL):
         embed = discord.Embed(title=song[-1]['title'], color=000, url='https://www.youtube.com/watch?v=%s' % song[-1]['id'])
         embed.set_author(name='Added to queue', icon_url=ctx.author.avatar_url)
         embed.set_thumbnail(url=song[-1]['thumbnail'])
-        embed.add_field(name='Requested by:', value='`%s`' %  song[-1]['author'])
+        embed.add_field(name='Requested by', value='`%s`' %  song[-1]['author'])
         embed.add_field(name='Song Duration', value='`%s`' % format_seconds(song[-1]['duration']))
         embed.add_field(name='Position in queue', value='`%s.`' % str(song.index(song[-1])))
         embed.set_footer(text='✅ | Use `?queue` to see the queue.')
@@ -166,6 +166,7 @@ class music(Queue, commands.Cog):
                 source = discord.FFmpegPCMAudio(song['url'], **self.FFMPEG_OPTIONS)
             except:
                 await ctx.send('There was an error connecting')
+                raise
             else:
                 try:
                     ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
@@ -184,7 +185,11 @@ class music(Queue, commands.Cog):
         # before counts members in voice channel, it is needs to check
         # if either of the all members is a bot or not.
         length_members = [member.id for member in channel.members if member.bot is not True]
-        voted_skip.append(ctx.author.id) if ctx.author.id not in voted_skip else await ctx.send('You already voted!', delete_after=5)
+
+        if ctx.author.id not in voted_skip:
+            voted_skip.append(ctx.author.id)
+        else:
+            await ctx.send('You already voted!', delete_after=5)
 
         require = len(length_members) * 0.8
 
@@ -202,32 +207,29 @@ class music(Queue, commands.Cog):
                 await self.play_next(ctx)
             voted_skip.clear()
         else:
-            await ctx.send('**Skipping?** (%s/%s peolple)' % (len(voted_skip), round(require)))
+            await ctx.send('**Skipping?** (%s/%s people)' % (len(voted_skip), round(require)))
 
     @commands.command(aliases=['fs'])
-    @commands.has_role('ADMIN')
     @__handle_bot_queue_status
     async def forceskip(self, ctx):
-        ctx.voice_client.stop()
-        voted_skip.clear()
-        await self.play_next(ctx)
-        await ctx.send('**Skkiped** :thumbsup:')
-
-    @forceskip.error
-    async def is_not_admin(self, ctx, error):
-        await ctx.send('Missing permissions, sorry')
+        if ctx.author.guild_permissions.administrator:
+            ctx.voice_client.stop()
+            voted_skip.clear()
+            await self.play_next(ctx)
+            return await ctx.send('**Skkiped** :thumbsup:')
+        return await ctx.send('You are missing Administrator permission(s) to run this command.')
 
     @commands.command(aliases=['np'])
     @__handle_bot_queue_status
     async def nowplaying(self, ctx):
-        now_playing = self.get_server_queue(ctx)['songs'][0]
+        now_playing = self.get_server_queue(ctx.guild)['songs'][0]
         embed = discord.Embed(
             color=000,
             title='▶️ | Now playing',
             description='[**%s**](https://www.youtube.com/watch?v=%s) | Duration %s\n`Requested by: %s`\nㅤ' %
             (now_playing['title'], now_playing['id'], format_seconds(now_playing['duration']), now_playing['author']))
         embed.set_thumbnail(url=now_playing['thumbnail'])
-        embed.add_field(name='Add Songs.', value='✅ | Use command `?play`.')
+        embed.set_footer(text='✅ | Use command `?play` to add songs.')
         await ctx.send(embed=embed)
 
     @commands.command(aliases=[])
@@ -239,9 +241,7 @@ class music(Queue, commands.Cog):
     @commands.command()
     @__handle_bot_queue_status
     async def leave(self, ctx):
-        global server_queue
-
-        _server_queue = server_queue.get(ctx.guild.id, None)
+        _server_queue = self.get_server_queue(ctx.guild)
         if _server_queue is not None:
             server_queue.pop(ctx.guild.id)
             ctx.voice_client.stop()
@@ -261,7 +261,7 @@ class music(Queue, commands.Cog):
         embed_list_songs.set_thumbnail(url=now_playing['thumbnail'])
 
         cont = 0
-        if len(songs) > 0:
+        if len(songs) > 1:
             for song in songs[1:]:
                 cont += 1
                 embed_list_songs.add_field(
@@ -276,13 +276,16 @@ class music(Queue, commands.Cog):
 
         await ctx.send(embed=embed_list_songs)
 
-def check_queue():
-    status = False if queue == {} else True
-    return status
+    @commands.command()
+    async def pl(self, ctx):
+        print(dict(ctx.author.guild_permissions))
 
-def clear_server_queue(voice_client):
-    queue.get(voice_client.guild.id)['songs'].clear()
-    queue.delete(voice_client.guild.id)
+def check_queue(guild):
+    return queue.has(guild.id)
+
+def clear_server_queue(guild):
+    queue.get(guild.id)['songs'].clear()
+    queue.delete(guild.id)
     voted_skip.clear()
 
 def setup(client):

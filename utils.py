@@ -17,21 +17,20 @@ def is_number(arg):
 
 
 class Map:
-    def __init__(self):
-        self.obj = {}
+    def __init__(self): self._dict = {}
 
-    def __str__(self):
-        return '%s' % self.obj
+    def __str__(self): return '%s' % self._dict
 
     def set(self, key, value):
-        new_obj = self.obj[key] = value
-        return new_obj
+        new__dict = self._dict[key] = value
+        return new__dict
 
-    def get(self, key):
-        return self.obj.get(key, None)
+    def has(self, key):
+        obj = self._dict.get(key, None)
+        if obj is not None:
+            return True
+        return False
 
-    def delete(self, key):
-        return self.obj.pop(key)
-
-    def clear(self):
-        return self.obj.clear()
+    def get(self, key): return self._dict.get(key, None)
+    def delete(self, key): return self._dict.pop(key)
+    def clear(self): return self._dict.clear()

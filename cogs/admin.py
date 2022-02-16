@@ -1,5 +1,6 @@
 import asyncio
 import discord
+import json
 from discord.ext import commands
 
 from media.gif import *
@@ -36,44 +37,45 @@ class Admin(commands.Cog):
             embed.add_field(name=minecraft['resource_pack']['name'], value=minecraft['resource_pack']['value'])
             await ctx.send(embed=embed)
 
+
+class Poll(commands.Cog):
+
+    def __init__(self, client):
+        self.client = client
+        self._dict_message = {}
+        self._list_users = []
+
     @commands.command()
-    async def clean(self, ctx, amount=None, user=None, message=[]):
+    async def poll(self, ctx, *, args):
+        question = args[:args.find(']')].strip('[')
+        choices = args[args.find(']') + 2:].replace(' ', '').split(',')
 
-        async def on_delete_message():
-            await asyncio.sleep(3)
-            await ctx.message.delete()
+        embed = discord.Embed(
+            color=color_rgb(162, 252, 239),
+            description=f':bar_chart: **{question}**'
+        )
+        for choice in choices:
+            embed.add_field(name=choice, value='`ㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤㅤ`' + '| 0% (0)', inline=False)
+        embed.set_footer(text='✅ You may select multiple options in this poll')
 
-        if amount is None:
-            await ctx.send('please entre the amount of message that you want to clear!', delete_after=7)
-            await on_delete_message()
-            return
+        message = await ctx.send(embed=embed)
+        self._dict_message[message.id] = message
+        # new_embed = discord.Embed(title='embed 2')
+        # new_embed.set_footer(text='✅ You may select multiple ')
+        # await asyncio.sleep(5)
+        # await message.edit(embed=new_embed)
 
-        if is_number(amount) is not True:
-            await ctx.send('please entre a real number!', delete_after=7)
-            return await on_delete_message()
+    # @commands.Cog.listener()
+    # async def on_reaction_add(self, reaction, user, users=[]):
+    #     message = self._list_message.get(reaction.message.id)
+    #     if message is not None:
+    #         users.append(user.id)
+    #         print(users)
+    #         new_embed = discord.Embed(title='embed 2')
+    #         new_embed.set_footer(text='✅ You may select multiple ')
+    #         await message.edit(embed=new_embed)
 
-        if int(amount) > 100:
-            await ctx.send('please entre a real number!', delete_after=7)
-            return await ctx.message.delete()
-        elif int(amount) < 1:
-            await ctx.send('please entre a real number!', delete_after=7)
-            return await ctx.message.delete()
-
-        if amount is not None and user is None:
-            await ctx.channel.purge(limit=int(amount))
-            await ctx.send(f'**{ctx.author.name}**, msg has been deleted! ♻️', delete_after=5)
-            await ctx.message.delete()
-        elif user is not None:
-            await ctx.message.delete()
-            async for msg in ctx.message.channel.history(limit=200):
-                if msg.author.name == user:
-                    if len(message) == int(amount):
-                        break
-                    message.append(msg)
-            for i in range(len(message)):
-                await message[i].delete()
-            message.clear()
-            await ctx.send(f'**{ctx.author.name}**, msg has been deleted! ♻️', delete_after=5)
 
 def setup(client):
     client.add_cog(Admin(client))
+    client.add_cog(Poll(client))
