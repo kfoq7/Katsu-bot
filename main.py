@@ -15,4 +15,6 @@ client = commands.Bot(command_prefix=PREFIX, activity=activity_1, intents=intent
 for i in range(len(cogs)):
     cogs[i].setup(client)
 
+key = 'HOME'
+# print(os.environ['PREFIX'])
 client.run(TOKEN)

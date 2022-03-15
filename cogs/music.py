@@ -1,6 +1,7 @@
 import asyncio
 import discord
 import functools
+import random
 from discord.ext import commands
 
 import youtube_dl
@@ -14,21 +15,15 @@ voted_skip = []
 
 class YoutubeDL(youtube_dl.YoutubeDL):
 
-    YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': 'True'}
+    is_playlist = ('list' or 'playlist') and 'https://'
 
-    def validate_url_is_playlist(self, query):
-        if '&' in query:
-            _format = query[:query.find('&')]
-            return _format
-        return query
+    YDL_OPTIONS = {'format': 'bestaudio', 'noplaylist': False}
 
     def search_yt(self, query, author):
-        query = self.validate_url_is_playlist(query)
-
         with YoutubeDL(self.YDL_OPTIONS) as ydl:
-            try:
-                info = ydl.extract_info(f"ytsearch:{query}", download=False)['entries'][0]
-                song = {
+            _query = f'{query}' if self.is_playlist in query else f'ytsearch:{query}'
+            playlist = [
+                {
                     'url': info['formats'][0]['url'],
                     'id': info['id'],
                     'title': info['title'],
@@ -36,9 +31,9 @@ class YoutubeDL(youtube_dl.YoutubeDL):
                     'duration': info['duration'],
                     'author': author.name
                 }
-            except Exception:
-                return {'detail': 'There was an error finding video.'}
-        return song
+                for info in ydl.extract_info(_query, download=False)['entries'][:25]
+            ]
+            return playlist
 
 
 class Queue(YoutubeDL):
@@ -48,7 +43,8 @@ class Queue(YoutubeDL):
 
     def _server_queue(self, song, ctx):
         server_queue = self.get_server_queue(ctx.guild)
-        song = self.search_yt(song, ctx.author).copy()
+        playlist = self.search_yt(song, ctx.author)
+
         if not server_queue:
             queue_object = {
                 'voice_channel': self.voice_channel,
@@ -57,18 +53,17 @@ class Queue(YoutubeDL):
                 'songs': []
             }
             queue.set(ctx.guild.id, queue_object)
-            queue_object['songs'].append(song)
+            for song in playlist:
+                queue_object['songs'].append(song.copy())
             return self.get_server_queue(ctx.guild), None
         else:
-            server_queue['songs'].append(song)
+            for song in playlist:
+                server_queue['songs'].append(song.copy())
             return server_queue, str
 
     def get_server_queue(self, guild=None):
         server_queue = queue.get(guild.id)
         return server_queue
-
-    def get_next_song(self):
-        return self.get_queue()['songs'][0]
 
     def song_player(self, ctx, query):
         server_queue, message = self._server_queue(query, ctx)
@@ -133,9 +128,13 @@ class music(Queue, commands.Cog):
         if len(songs) > 0:
             source = await discord.FFmpegOpusAudio.from_probe(songs[0]['url'], **self.FFMPEG_OPTIONS)
             try:
-                ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
+                await ctx.voice_client.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.client.loop))
             except:
                 pass # ignored error: `discord.errors.ClientException: Already playing audio.`
+
+    def _shuffle(self, _list: list):
+        new_playlist = random.shuffle(_list)
+        return new_playlist
 
     @commands.command(aliases=['p'])
     @__handle_bot_queue_status
@@ -149,6 +148,9 @@ class music(Queue, commands.Cog):
             self.text_channel = ctx.channel
             self.voice_channel = ctx.author.voice.channel
 
+            if self.is_playlist in query:
+                await ctx.send('**Downloading songs, please wait.**', delete_after=1)
+
             server_queue, message = self.song_player(ctx, query)
             song = server_queue['songs'][0]
 
@@ -158,7 +160,9 @@ class music(Queue, commands.Cog):
                     await ctx.guild.change_voice_state(channel=self.voice_channel, self_mute=False, self_deaf=True)
                     await ctx.send(f'**Joined `{self.voice_channel.name}` and requested into <#{self.text_channel.id}>**')
 
-                if message is not None:
+                if self.is_playlist in query:
+                    await ctx.send(':white_check_mark: **Added `25` tracks to the queue**')
+                elif message is not None:
                     await ctx.send(embed=self.add_embed_queue(server_queue['songs'], ctx))
                 else:
                     await ctx.send(':mag_right: Searching on **YouTube**')
@@ -173,7 +177,7 @@ class music(Queue, commands.Cog):
                 except:
                     pass # ignored error: `discord.errors.ClientException: Already playing audio.`
                 else:
-                    await ctx.send(f':notes: Now playing ~ **%s**' % song['title'])
+                    await ctx.send(':notes: Now playing ~ **%s**' % song['title'])
 
     @commands.command(aliases=['s'])
     @__handle_bot_queue_status
@@ -202,9 +206,6 @@ class music(Queue, commands.Cog):
         if len(voted_skip) == round(require):
             ctx.voice_client.stop()
             await ctx.send('**Skkiped** :thumbsup:')
-            song = self.get_server_queue(ctx.guild)
-            if song is not None:
-                await self.play_next(ctx)
             voted_skip.clear()
         else:
             await ctx.send('**Skipping?** (%s/%s people)' % (len(voted_skip), round(require)))
@@ -215,7 +216,6 @@ class music(Queue, commands.Cog):
         if ctx.author.guild_permissions.administrator:
             ctx.voice_client.stop()
             voted_skip.clear()
-            await self.play_next(ctx)
             return await ctx.send('**Skkiped** :thumbsup:')
         return await ctx.send('You are missing Administrator permission(s) to run this command.')
 
@@ -275,10 +275,6 @@ class music(Queue, commands.Cog):
                 name='There are no songs in queue.', value='✅ | No songs? use command `?play` to add songs')
 
         await ctx.send(embed=embed_list_songs)
-
-    @commands.command()
-    async def pl(self, ctx):
-        print(dict(ctx.author.guild_permissions))
 
 def check_queue(guild):
     return queue.has(guild.id)

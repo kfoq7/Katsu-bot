@@ -4,23 +4,12 @@ import functools
 from discord.ext import commands
 from pymongo import MongoClient
 
-from env import MONOGO_DB
+from env import MONGO_DB
 
 
-cluster = MongoClient(MONOGO_DB)
+cluster = MongoClient(MONGO_DB)
 #  cluster.get_database('discord')
 records = cluster['discord']['guardian']
-
-# new_guardian = {
-#     'name': 'kfoqiu7',
-#     'roll': 'admin'
-# }
-
-# records.insert_one(new_guardian)
-# records.count_documents({})
-
-# print(records.find_one({'name': 'kfoqiu7'}))
-
 
 class Guardian(commands.Cog):
 

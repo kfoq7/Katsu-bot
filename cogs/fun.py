@@ -1,6 +1,6 @@
-from msilib.schema import Error
-import random
 import asyncio
+import discord
+import random
 
 from discord.ext import commands
 
@@ -26,22 +26,46 @@ class Fun(commands.Cog):
 
     @commands.command()
     async def ticket(self, ctx, *args):
+        emoji_lock = '🔒'
+        emoji_delete = '⛔'
+
         category = self.client.get_channel(789656899318448138)
         channel = await ctx.message.guild.create_text_channel(f'ticket: {ctx.author.name}', category=category)
 
-        reactionMessage = await channel.send('Thank you for contacting support!')
-        try:
-            await reactionMessage.add_reaction('🔒')
-            await reactionMessage.add_reaction('⛔')
-        except:
-            await ctx.send('Error sending emojis')
+        overwrite = discord.PermissionOverwrite()
+        overwrite.view_channel = True
+        await channel.set_permissions(ctx.author, overwrite=overwrite)
+        await channel.set_permissions(ctx.author, send_message=True)
 
-        collector = await reactionMessage.channel.fetch_message(reactionMessage.id)
-        print(collector)
+        message = await channel.send('Thank you for contacting support!')
 
-        await ctx.send(f'We will be right to you! {channel}', delete_after=7)
-        await asyncio.sleep(3)
+        await message.add_reaction(emoji_lock)
+        await message.add_reaction(emoji_delete)
+
         await ctx.message.delete()
+        await ctx.send(f'We will be right to you! {channel}', delete_after=7)
+
+        def on_reaction_check(reaction, user):
+            return user == ctx.author and str(reaction) in [emoji_delete, emoji_lock]
+
+        while True:
+            try:
+                reaction, user = await self.client.wait_for(
+                    'reaction_add', check=on_reaction_check)
+                print(reaction)
+                if reaction == str(emoji_lock):
+                    print(1)
+                    await channel.set_permissions(ctx.author, send_message=False)
+                    break
+
+                if reaction == str(emoji_delete):
+                    print(1)
+                    await channel.send('Deleting this channel in 5 second')
+                    await asyncio.sleep(5)
+                    # await channel.delete()
+                    break
+            except:
+                raise
 
 def setup(client):
     client.add_cog(Fun(client))
